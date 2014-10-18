@@ -239,6 +239,72 @@ int key_to_freq(int key) {
   return roundf(440.0f * pow12root2(key-49));
 }
 
+int note_to_index(int raw_note)
+{
+  switch(raw_note)
+  {
+    case 'C':
+      return 0;
+    case 'D':
+      return 2;
+    case 'E':
+      return 4;
+    case 'F':
+      return 5;
+    case 'G':
+      return 7;
+    case 'A':
+      return 9;
+    case 'B':
+      return 11;
+    default:
+      return -1;
+  }
+}
+
+/* converts a note like A4 or C#4 to its frequency */
+int note_to_freq(const char* note) {
+  const char* notep;
+  int octave;
+  int note_index;
+  int adj;
+
+  notep = note;
+
+  if((note_index = note_to_index(*notep++)) == -1) {
+    return -1;
+  }
+
+  octave = 4;
+  adj = 0;
+
+  switch(*notep)
+  {
+    case '#':
+      adj = 1;
+      ++notep;
+      break;
+    case 'b':
+      adj = -1;
+      ++notep;
+      break;
+  }
+
+  if(!sscanf(notep, "%d", &octave) || octave < 0) {
+    return -1;
+  }
+#if 0
+  else {
+    int key = -8 + 12 * octave + note_index + adj;
+    int freq = key_to_freq(key);
+    fprintf(stderr, "[DEBUG] %s -> #%d -> %d\n", note, key, freq);
+    return freq;
+  }
+#else
+  return key_to_freq(-8 + 12 * octave + note_index + adj);
+#endif
+}
+
 /* Parse the command line.  argv should be untampered, as passed to main.
  * Beep parameters returned in result, subsequent parameters in argv will over-
  * ride previous ones.
@@ -246,6 +312,7 @@ int key_to_freq(int key) {
  * Currently valid parameters:
  *  "-f <frequency in Hz>"
  *  "-k <piano key#>
+ *  "-N <note>
  *  "-l <tone length in ms>"
  *  "-r <repetitions>"
  *  "-d <delay in ms>"
@@ -270,7 +337,7 @@ void parse_command_line(int argc, char **argv, beep_parms_t *result) {
 			       {"debug", 0, NULL, 'X'},
 			       {"device", 1, NULL, 'e'},
 			       {0,0,0,0}};
-  while((c = getopt_long(argc, argv, "f:k:l:r:d:D:schvVne:", opt_list, NULL))
+  while((c = getopt_long(argc, argv, "f:k:N:l:r:d:D:schvVne:", opt_list, NULL))
 	!= EOF) {
     int argval = -1;    /* handle parsed numbers for various arguments */
     float argfreq = -1; 
@@ -293,6 +360,16 @@ void parse_command_line(int argc, char **argv, beep_parms_t *result) {
           "one is used.\n");
       result->freq = key_to_freq(argval);
 	  break;
+    case 'N': /* note */
+      if((argval = note_to_freq(optarg)) < 0)
+        fprintf(stderr, "ERROR: failed to parse note %s\n", optarg);
+      if(result->freq != 0) {
+        fprintf(stderr, "WARNING: multiple -f/-k values given, only last "
+          "one is used.\n");
+      }
+
+      result->freq = argval;
+      break;
     case 'l' : /* length */
       if(!sscanf(optarg, "%d", &argval) || (argval < 0))
 	usage_bail(argv[0]);
