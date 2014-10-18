@@ -292,6 +292,7 @@ void parse_command_line(int argc, char **argv, beep_parms_t *result) {
         fprintf(stderr, "WARNING: multiple -f/-k values given, only last "
           "one is used.\n");
       result->freq = key_to_freq(argval);
+	  break;
     case 'l' : /* length */
       if(!sscanf(optarg, "%d", &argval) || (argval < 0))
 	usage_bail(argv[0]);
