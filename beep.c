@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <ctype.h>
 #include <math.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
@@ -263,7 +264,7 @@ int note_to_index(int raw_note)
 }
 
 /* converts a note like A4 or C#4 to its frequency */
-int note_to_freq(const char* note) {
+int sci_note_to_freq(const char* note) {
   const char* notep;
   int octave;
   int note_index;
@@ -293,17 +294,82 @@ int note_to_freq(const char* note) {
   if(!sscanf(notep, "%d", &octave) || octave < 0) {
     return -1;
   }
-#if 0
+#if 1
   else {
     int key = -8 + 12 * octave + note_index + adj;
     int freq = key_to_freq(key);
-    fprintf(stderr, "[DEBUG] %s -> #%d -> %d\n", note, key, freq);
+    fprintf(stderr, "[DEBUG] %s -> #%d -> %d Hz\n", note, key, freq);
     return freq;
   }
 #else
   return key_to_freq(-8 + 12 * octave + note_index + adj);
 #endif
 }
+
+int abc_note_to_freq(const char* note)
+{
+  const char* notep;
+  int octave;
+  int note_index;
+  int adj;
+
+  notep = note;
+  octave = 2;
+  adj = 0;
+
+  switch(*notep)
+  {
+    case '^':
+      adj = 1;
+      ++notep;
+      break;
+    case '_':
+      adj = -1;
+      ++notep;
+      break;
+  }
+
+  if(islower(*notep)) {
+    note_index = note_to_index(toupper(*notep));
+    ++octave;
+  } else {
+    note_index = note_to_index(*notep);
+  }
+
+  if(note_index < 0)
+    return -1;
+
+  while(*++notep)
+  {
+    switch(*notep)
+    {
+      case '\'':
+        ++octave;
+        break;
+
+      case ',':
+        --octave;
+        break;
+
+      default:
+        fprintf(stderr, "WARNING: ignoring %s portion of %s\n", notep, note);
+    }
+  }
+
+#if 1
+    int key = -8 + 12 * octave + note_index + adj;
+    int freq = key_to_freq(key);
+    fprintf(stderr, "[DEBUG] %s -> #%d -> %d Hz\n", note, key, freq);
+    return freq;
+#else
+  return note_to_freq(octave, note_index, adj);
+#endif
+}
+
+int note_to_freq(int octave, int note_index, int adj) {
+  return key_to_freq(-8 + 12 * octave + note_index + adj);
+}
+
 
 /* Parse the command line.  argv should be untampered, as passed to main.
  * Beep parameters returned in result, subsequent parameters in argv will over-
@@ -329,6 +395,7 @@ int note_to_freq(const char* note) {
  */
 void parse_command_line(int argc, char **argv, beep_parms_t *result) {
   int c;
+  int note_format_sci = 1;
 
   struct option opt_list[7] = {{"help", 0, NULL, 'h'},
 			       {"version", 0, NULL, 'V'},
@@ -337,7 +404,7 @@ void parse_command_line(int argc, char **argv, beep_parms_t *result) {
 			       {"debug", 0, NULL, 'X'},
 			       {"device", 1, NULL, 'e'},
 			       {0,0,0,0}};
-  while((c = getopt_long(argc, argv, "f:k:N:l:r:d:D:schvVne:", opt_list, NULL))
+  while((c = getopt_long(argc, argv, "f:k:N:F:l:r:d:D:schvVne:", opt_list, NULL))
 	!= EOF) {
     int argval = -1;    /* handle parsed numbers for various arguments */
     float argfreq = -1; 
@@ -361,7 +428,12 @@ void parse_command_line(int argc, char **argv, beep_parms_t *result) {
       result->freq = key_to_freq(argval);
 	  break;
     case 'N': /* note */
-      if((argval = note_to_freq(optarg)) < 0)
+      if(note_format_sci)
+        argval = sci_note_to_freq(optarg);
+      else
+        argval = abc_note_to_freq(optarg);
+
+      if(argval < 0)
         fprintf(stderr, "ERROR: failed to parse note %s\n", optarg);
       if(result->freq != 0) {
         fprintf(stderr, "WARNING: multiple -f/-k values given, only last "
@@ -369,6 +441,14 @@ void parse_command_line(int argc, char **argv, beep_parms_t *result) {
       }
 
       result->freq = argval;
+      break;
+    case 'F': /* note format */
+      if(!strcmp("sci", optarg))
+        note_format_sci = 1;
+      else if(!strcmp("abc", optarg))
+        note_format_sci = 0;
+      else
+        fprintf(stderr, "ERROR: options valid for -F are 'sci' or 'abc'\n");
       break;
     case 'l' : /* length */
       if(!sscanf(optarg, "%d", &argval) || (argval < 0))
