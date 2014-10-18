@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <math.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <linux/kd.h>
@@ -223,6 +224,20 @@ void usage_bail(const char *executable_name) {
   exit(1);
 }
 
+/* calculates (12th root of two)^n */
+float pow12root2(int n) {
+  if(n < 0)
+    return 1.0f / pow12root2(-n);
+  else if(n > 0)
+    return 1.0594630943592952645f * pow12root2(n-1);
+  else
+    return 1.0f;
+}
+
+/* converts a piano key number to its frequency */
+int key_to_freq(int key) {
+  return roundf(440.0f * pow12root2(key-49));
+}
 
 /* Parse the command line.  argv should be untampered, as passed to main.
  * Beep parameters returned in result, subsequent parameters in argv will over-
@@ -230,6 +245,7 @@ void usage_bail(const char *executable_name) {
  * 
  * Currently valid parameters:
  *  "-f <frequency in Hz>"
+ *  "-k <piano key#>
  *  "-l <tone length in ms>"
  *  "-r <repetitions>"
  *  "-d <delay in ms>"
@@ -254,7 +270,7 @@ void parse_command_line(int argc, char **argv, beep_parms_t *result) {
 			       {"debug", 0, NULL, 'X'},
 			       {"device", 1, NULL, 'e'},
 			       {0,0,0,0}};
-  while((c = getopt_long(argc, argv, "f:l:r:d:D:schvVne:", opt_list, NULL))
+  while((c = getopt_long(argc, argv, "f:k:l:r:d:D:schvVne:", opt_list, NULL))
 	!= EOF) {
     int argval = -1;    /* handle parsed numbers for various arguments */
     float argfreq = -1; 
@@ -265,10 +281,17 @@ void parse_command_line(int argc, char **argv, beep_parms_t *result) {
 	usage_bail(argv[0]);
       else
 	if (result->freq != 0)
-	  fprintf(stderr, "WARNING: multiple -f values given, only last "
+	  fprintf(stderr, "WARNING: multiple -f/-k values given, only last "
 	    "one is used.\n");
 	result->freq = argfreq;    
       break;
+    case 'k': /* piano key# */
+      if(!sscanf(optarg, "%d", &argval) || (argval < 0))
+        usage_bail(argv[0]);
+      else if(result->freq != 0)
+        fprintf(stderr, "WARNING: multiple -f/-k values given, only last "
+          "one is used.\n");
+      result->freq = key_to_freq(argval);
     case 'l' : /* length */
       if(!sscanf(optarg, "%d", &argval) || (argval < 0))
 	usage_bail(argv[0]);
